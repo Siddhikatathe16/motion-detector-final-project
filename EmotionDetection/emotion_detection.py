@@ -1,44 +1,60 @@
+
+"""Emotion detection using the Watson NLP service."""
+
 import requests
-import json
+
+URL = (
+    "https://sn-watson-emotion.labs.skills.network/"
+    "v1/watson.runtime.nlp.v1/NlpService/EmotionPredict"
+)
+
+HEADERS = {
+    "grpc-metadata-mm-model-id":
+        "emotion_aggregated-workflow_lang_en_stock"
+}
+
+EMOTIONS = ("anger", "disgust", "fear", "joy", "sadness")
+
 
 def emotion_detector(text_to_analyze):
-    url = 'https://sn-watson-emotion.labs.skills.network/v1/watson.runtime.nlp.v1/NlpService/EmotionPredict'
-    headers = {"grpc-metadata-mm-model-id": "emotion_aggregated-workflow_lang_en_stock"}
-    input_json = { "raw_document": { "text": text_to_analyze } }
+    """Return emotion scores and the dominant emotion."""
+    result = {emotion: None for emotion in EMOTIONS}
+    result["dominant_emotion"] = None
 
-    response = requests.post(url, json=input_json, headers=headers)
+    if not isinstance(text_to_analyze, str) or not text_to_analyze.strip():
+        return result
 
-    # Error handling
-    if response.status_code == 400:
-        return {
-            'anger': None,
-            'disgust': None,
-            'fear': None,
-            'joy': None,
-            'sadness': None,
-            'dominant_emotion': None
-        }
+    try:
+        response = requests.post(
+            URL,
+            json={"raw_document": {"text": text_to_analyze}},
+            headers=HEADERS,
+            timeout=15,
+        )
 
-    formated_response = response.json()
+        if response.status_code == 400:
+            return result
 
-    # Extract emotions
-    emotions = formated_response['emotionPredictions'][0]['emotion']
+        if response.status_code != 200:
+            return result
 
-    anger = emotions['anger']
-    disgust = emotions['disgust']
-    fear = emotions['fear']
-    joy = emotions['joy']
-    sadness = emotions['sadness']
+        data = response.json()
+        scores = data["emotionPredictions"][0]["emotion"]
 
-    # Find dominant emotion
-    dominant_emotion = max(emotions, key=emotions.get)
+        for emotion in EMOTIONS:
+            result[emotion] = float(scores[emotion])
 
-    # Return required format
-    return {
-        'anger': anger,
-        'disgust': disgust,
-        'fear': fear,
-        'joy': joy,
-        'sadness': sadness,
-        'dominant_emotion': dominant_emotion
-    }
+        result["dominant_emotion"] = max(
+            EMOTIONS, key=lambda emotion: result[emotion]
+        )
+
+        return result
+
+    except (
+        requests.RequestException,
+        ValueError,
+        KeyError,
+        IndexError,
+        TypeError,
+    ):
+        return result
